@@ -1,0 +1,56 @@
+# XcodeGen spec. The cloud build runs `xcodegen generate` to create SongCheckpoints.xcodeproj.
+# On a Mac: `brew install xcodegen && xcodegen generate && open SongCheckpoints.xcodeproj`
+name: SongCheckpoints
+
+options:
+  bundleIdPrefix: com.connollycreates
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  CheckpointCore:
+    path: Packages/CheckpointCore
+
+targets:
+  SongCheckpoints:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: CheckpointCore
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDisplayName: Checkpoints
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        NSAppleMusicUsageDescription: Checkpoints plays songs from your Music library so you can jump between the moments you save.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.connollycreates.songcheckpoints
+        TARGETED_DEVICE_FAMILY: "1"
+
+schemes:
+  SongCheckpoints:
+    build:
+      targets:
+        SongCheckpoints: all
+    run:
+      config: Debug
+    archive:
+      config: Release

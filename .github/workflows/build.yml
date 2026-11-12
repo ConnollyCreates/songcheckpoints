@@ -1,0 +1,84 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  logic-tests:
+    name: Checkpoint logic tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run CheckpointCore tests
+        run: swift test --package-path Packages/CheckpointCore
+
+  ios-build:
+    name: Build unsigned iPhone app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned, for device)
+        run: |
+          xcodebuild build \
+            -project SongCheckpoints.xcodeproj \
+            -scheme SongCheckpoints \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            > xcodebuild.log 2>&1 && status=0 || status=$?
+          echo "---- errors / result ----"
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" xcodebuild.log | head -150 || true
+          echo "---- warning count: $(grep -c 'warning:' xcodebuild.log || true) ----"
+          exit $status
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
+
+      - name: Package unsigned IPA
+        run: |
+          APP="build/Build/Products/Release-iphoneos/SongCheckpoints.app"
+          test -d "$APP"
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && zip -qry ../SongCheckpoints-unsigned.ipa Payload)
+          ls -lh SongCheckpoints-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SongCheckpoints-unsigned-ipa
+          path: SongCheckpoints-unsigned.ipa
+
+      - name: Publish "test-build" release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete test-build --yes --cleanup-tag || true
+          gh release create test-build SongCheckpoints-unsigned.ipa \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Test build ${GITHUB_SHA::7}" \
+            --notes "Unsigned IPA. Install with Sideloadly using your Apple ID (see README). Built from ${GITHUB_SHA}."
