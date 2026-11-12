@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import MediaPlayer
 import AVFoundation
 import UIKit
@@ -50,6 +51,8 @@ final class PlayerService: ObservableObject {
     private var loadGeneration = 0
     private var finishedGeneration = -1
     private var lastLoadUsedStoreIDs = false
+    /// True between replacing the queue and starting playback; detection is paused so a slow load isn't read as a button press.
+    private var isLoading = false
     private var lastHeartbeatWallClock: Date?
 
     private init() {}
@@ -246,6 +249,7 @@ final class PlayerService: ObservableObject {
         let generation = loadGeneration
         let copies = activeMode.usesClones ? AppSettings.cloneCount : 1
 
+        isLoading = true
         noteAppAction()
         detector.reset()
         predictor.reset()
@@ -265,8 +269,9 @@ final class PlayerService: ObservableObject {
 
         player.prepareToPlay { [weak self] error in
             let message = error?.localizedDescription
+            let service = self
             Task { @MainActor in
-                self?.finishLoad(generation: generation, startTime: startTime, note: message.map { "prepareToPlay error: \($0)" })
+                service?.finishLoad(generation: generation, startTime: startTime, note: message.map { "prepareToPlay error: \($0)" })
             }
         }
         // prepareToPlay sometimes never calls back; don't let that strand playback.
@@ -280,6 +285,8 @@ final class PlayerService: ObservableObject {
     private func finishLoad(generation: Int, startTime: Double, note: String?) {
         guard generation == loadGeneration, finishedGeneration < generation else { return }
         finishedGeneration = generation
+        isLoading = false
+        detector.reset()
         if let note { diag.log("QUEUE", note) }
         noteAppAction()
         if startTime > 0.5 { player.currentPlaybackTime = startTime }
@@ -298,8 +305,9 @@ final class PlayerService: ObservableObject {
         player.perform(queueTransaction: { _ in }, completionHandler: { [weak self] queue, error in
             let count = queue.items.count
             let message = error?.localizedDescription
+            let service = self
             Task { @MainActor in
-                self?.queueVerified(generation: generation, expected: expected, count: count, error: message)
+                service?.queueVerified(generation: generation, expected: expected, count: count, error: message)
             }
         })
     }
@@ -345,7 +353,7 @@ final class PlayerService: ObservableObject {
         isPlaying = player.playbackState == .playing
         if let item = currentItem, item.playbackDuration > 0 { duration = item.playbackDuration }
 
-        guard !session.isEmpty else { return }
+        guard !session.isEmpty, !isLoading else { return }
         let sample = PlayerSample(time: now, entryIndex: entry, position: reported, duration: knownDuration)
         guard let event = detector.ingest(sample) else { return }
 

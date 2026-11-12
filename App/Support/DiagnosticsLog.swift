@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import UIKit
 
 /// Timestamped log of everything the test needs to answer: which button path fired,

@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 @main
+@MainActor
 struct SongCheckpointsApp: App {
     init() {
         AppSettings.register()
