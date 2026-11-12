@@ -46,6 +46,11 @@ jobs:
           echo "---- errors / result ----"
           grep -E "error:|BUILD (SUCCEEDED|FAILED)" xcodebuild.log | head -150 || true
           echo "---- warning count: $(grep -c 'warning:' xcodebuild.log || true) ----"
+          if [ "$status" -ne 0 ]; then
+            # One annotation holding every unique compiler error, so it shows on the run's summary page.
+            errors=$(grep -E "error:" xcodebuild.log | sed -E 's#^.*/(App|Packages)/#\1/#' | sort -u | head -60 | awk '{printf "%s%%0A", $0}')
+            echo "::error title=xcodebuild failed::${errors}"
+          fi
           exit $status
 
       - name: Upload build log
